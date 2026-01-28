@@ -9,110 +9,123 @@
 </head>
 <body class="bg-slate-50 font-sans">
 
-<div class="max-w-6xl mx-auto p-6">
-    <!-- Header -->
-    <div class="flex flex-col md:flex-row justify-between items-center mb-10 gap-4">
+<div class="max-w-6xl mx-auto p-4 md:p-8">
+    <div class="flex justify-between items-center mb-10">
         <div>
             <h1 class="text-3xl font-black text-slate-900 tracking-tighter">LUCE <span class="text-blue-600">SALES</span></h1>
-            <p class="text-xs font-bold text-slate-400 uppercase tracking-widest">Babysitting Lead Management Portal</p>
+            <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Babysitting Vertical | Lead Viewer</p>
         </div>
-        <div class="flex gap-2">
-            <input type="text" id="postalSearch" placeholder="Filter by Postal..." class="p-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500">
-            <button onclick="loadData()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-bold shadow-lg transition flex items-center gap-2">
-                <i class="fas fa-sync-alt"></i> REFRESH
-            </button>
-        </div>
+        <button onclick="loadData()" class="bg-blue-600 text-white px-6 py-2 rounded-lg font-bold shadow-lg flex items-center gap-2 transition hover:bg-blue-700">
+            <i class="fas fa-sync-alt"></i> REFRESH
+        </button>
     </div>
 
-    <!-- Stats Row (Lead Analysis) -->
-    <div id="statsRow" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8"></div>
-
-    <!-- Lead Grid -->
     <div id="leadGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <div class="col-span-full text-center py-20 text-slate-400">Click Refresh to load latest leads...</div>
+        <div class="col-span-full text-center py-20 text-slate-400 font-bold">Initializing Dashboard...</div>
     </div>
 </div>
 
 <script>
-// 1. PLACE YOUR PUBLISHED CSV LINK HERE
-const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSTJWKWZ-qx8AnU7X8Shh8VElPJU_lvHvrtqhwEeJwKsu_BUmFUw5PO18nw38oTxOoL_EWif9KLNlPR/pub?gid=1300555189&single=true&output=csv";
+// 1. ENSURE THIS IS YOUR PUBLISHED CSV LINK
+const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSTJWKWZ-qx8AnU7X8Shh8VElPJU_lvHvrtqhwEeJwKsu_BUmFUw5PO18nw38oTxOoL_EWif9KLNlPR/pubhtml";
 
-function loadData() {
-    Papa.parse(CSV_URL, {
-        download: true,
-        header: true,
-        complete: function(results) {
-            renderDashboard(results.data);
-        },
-        error: function(err) {
-            alert("Error: Make sure your Google Sheet is 'Published to Web' as CSV.");
-        }
-    });
+async function loadData() {
+    const grid = document.getElementById('leadGrid');
+    grid.innerHTML = '<div class="col-span-full text-center py-20 text-slate-400 animate-pulse font-bold">Fetching latest leads...</div>';
+
+    try {
+        const proxyUrl = "https://api.allorigins.win/raw?url=" + encodeURIComponent(CSV_URL);
+        const response = await fetch(proxyUrl);
+        const csvText = await response.text();
+
+        Papa.parse(csvText, {
+            header: false,
+            skipEmptyLines: true,
+            complete: function(results) {
+                renderDashboard(results.data);
+            }
+        });
+    } catch (err) {
+        grid.innerHTML = `<div class="col-span-full text-red-500 text-center py-20 font-bold">Failed to load data. Ensure the Google Sheet is published as CSV.</div>`;
+    }
 }
 
-function renderDashboard(data) {
+function renderDashboard(rows) {
     const grid = document.getElementById('leadGrid');
-    const stats = document.getElementById('statsRow');
     grid.innerHTML = '';
     
-    // Reverse data to show newest first
-    const cleanData = data.filter(row => row['Timestamp']).reverse();
+    // Remove header row (index 0) and reverse to show newest first
+    const dataRows = rows.slice(1).reverse();
 
-    // Render Stats
-    stats.innerHTML = `
-        <div class="bg-white p-4 rounded-xl shadow-sm border-b-4 border-blue-500">
-            <p class="text-[10px] font-black text-slate-400 uppercase">Total Leads</p>
-            <p class="text-2xl font-black text-slate-800">${cleanData.length}</p>
-        </div>
-    `;
+    dataRows.forEach(row => {
+        // MAPPING BASED ON YOUR PROVIDED HEADERS
+        const lead = {
+            timestamp: row[0],
+            name:      row[1],
+            ageY:      row[2],
+            ageM:      row[3],
+            postal:    row[4],
+            start:     row[5],
+            duration:  parseInt(row[6]) || 0,
+            freqAdhoc: row[7],
+            freqWeekly:row[8],
+            others:    row[22]
+        };
 
-    cleanData.forEach(lead => {
-        // Logic for 11:30 AM - 12:30 PM Rule (6-hour bookings)
-        const duration = parseInt(lead['Duration (Hours)'] || 0);
-        const startTime = (lead['Start Time'] || "").toLowerCase();
-        const isMiddayRisk = duration >= 6 && (startTime.includes("11:3") || startTime.includes("12:") || startTime.includes("12:3"));
+        // LOOP TO COLLECT SERVICES (Columns 9 to 21)
+        let services = [];
+        for (let i = 9; i <= 21; i++) {
+            if (row[i] && row[i].trim() !== "") {
+                // Remove the "Services Required [" prefix and "]" suffix for cleaner display
+                let cleanService = row[i].replace(/Services Required \[|\]/g, "");
+                services.push(cleanService);
+            }
+        }
+        if (lead.others) services.push("Note: " + lead.others);
+
+        // LOGIC FOR 11:30 AM - 12:30 PM RULE
+        const isMiddayRisk = lead.duration >= 6 && 
+            (lead.start.includes("11:3") || lead.start.includes("12:0") || lead.start.includes("12:3"));
 
         const card = document.createElement('div');
-        card.className = `bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col justify-between transition hover:shadow-md ${isMiddayRisk ? 'ring-2 ring-red-500' : ''}`;
+        card.className = `bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col justify-between transition hover:shadow-md ${isMiddayRisk ? 'ring-2 ring-red-500 bg-red-50' : ''}`;
         
         card.innerHTML = `
             <div>
                 <div class="flex justify-between items-start mb-4">
-                    <span class="text-[9px] font-black text-slate-400 uppercase">${lead['Timestamp']}</span>
-                    ${isMiddayRisk ? '<span class="bg-red-600 text-white text-[9px] font-black px-2 py-0.5 rounded animate-pulse">UTILIZATION RISK</span>' : ''}
+                    <span class="text-[9px] font-black text-slate-400 uppercase">${lead.timestamp}</span>
+                    ${isMiddayRisk ? '<span class="bg-red-600 text-white text-[9px] font-black px-2 py-0.5 rounded animate-bounce">UTILIZATION RISK</span>' : ''}
                 </div>
                 
-                <h3 class="text-xl font-bold text-slate-800">${lead['Parent Name']}</h3>
-                <p class="text-blue-600 font-mono text-sm font-bold mb-4">${lead['Postal Code (6 digits)']} | ${lead['Number of Children']} Child(ren)</p>
+                <h3 class="text-xl font-bold text-slate-800">${lead.name}</h3>
+                <p class="text-blue-600 font-mono text-sm font-bold mb-4">${lead.postal}</p>
                 
-                <div class="bg-slate-50 p-3 rounded-xl mb-4 grid grid-cols-2 gap-2">
+                <div class="grid grid-cols-2 gap-2 mb-4 bg-slate-50 p-3 rounded-xl border border-slate-100">
                     <div>
-                        <p class="text-[9px] font-black text-slate-400 uppercase">Schedule</p>
-                        <p class="text-xs font-bold">${lead['Date(s)']} @ ${lead['Start Time']}</p>
+                        <p class="text-[9px] font-black text-slate-400 uppercase">Child Age</p>
+                        <p class="text-xs font-bold text-slate-700">${lead.ageY}y ${lead.ageM}m</p>
                     </div>
                     <div>
                         <p class="text-[9px] font-black text-slate-400 uppercase">Duration</p>
-                        <p class="text-xs font-bold">${duration} Hours</p>
+                        <p class="text-xs font-bold text-slate-700">${lead.duration} Hours</p>
                     </div>
                 </div>
 
-                <div class="space-y-3 mb-6">
-                    <div>
-                        <p class="text-[9px] font-black text-slate-400 uppercase mb-1">Must Haves</p>
-                        <div class="flex flex-wrap gap-1">
-                            ${(lead['What are the non-negotiable tasks?'] || "").split(',').map(t => `<span class="bg-slate-800 text-white text-[9px] px-2 py-0.5 rounded">${t.trim()}</span>`).join('')}
-                        </div>
-                    </div>
-                    <div>
-                        <p class="text-[9px] font-black text-slate-400 uppercase mb-1">Wishes</p>
-                        <div class="flex flex-wrap gap-1">
-                            ${(lead['What would you like but is not a dealbreaker?'] || "").split(',').map(t => `<span class="bg-blue-100 text-blue-600 text-[9px] px-2 py-0.5 rounded">${t.trim()}</span>`).join('')}
-                        </div>
+                <div class="mb-4">
+                    <p class="text-[9px] font-black text-slate-400 uppercase mb-1">Schedule & Frequency</p>
+                    <p class="text-xs text-slate-600 font-medium">${lead.start}</p>
+                    <p class="text-[10px] text-blue-500 font-bold">${lead.freqAdhoc || lead.freqWeekly || 'Ad-hoc'}</p>
+                </div>
+
+                <div class="mb-6">
+                    <p class="text-[9px] font-black text-slate-400 uppercase mb-2">Required Services</p>
+                    <div class="flex flex-wrap gap-1">
+                        ${services.map(s => `<span class="bg-slate-800 text-white text-[9px] px-2 py-0.5 rounded">${s}</span>`).join('')}
                     </div>
                 </div>
             </div>
 
-            <button onclick="copyToWhatsApp('${lead['Parent Name']}', '${lead['Postal Code (6 digits)']}', '${lead['Start Time']}', '${duration}', '${lead['What are the non-negotiable tasks?']}')" 
+            <button onclick="copyToWhatsApp('${lead.name}', '${lead.postal}', '${lead.ageY}y ${lead.ageM}m', '${lead.start}', '${lead.duration}', '${services.join('; ')}')" 
                     class="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 rounded-xl transition flex items-center justify-center gap-2 text-sm">
                 <i class="fab fa-whatsapp"></i> COPY LEAD CARD
             </button>
@@ -121,11 +134,13 @@ function renderDashboard(data) {
     });
 }
 
-function copyToWhatsApp(name, postal, time, dur, tasks) {
-    const text = `🚨 *NEW LEAD RECEIVED*\n👤 *Parent:* ${name}\n📍 *Postal:* ${postal}\n⏰ *Time:* ${time} (${dur} hrs)\n✅ *Must Do:* ${tasks}`;
+function copyToWhatsApp(name, postal, age, start, dur, services) {
+    const text = `🚨 *NEW LEAD*\n👤 *Parent:* ${name}\n📍 *Postal:* ${postal}\n👶 *Child Age:* ${age}\n⏰ *Start:* ${start} (${dur} hrs)\n✅ *Tasks:* ${services}`;
     navigator.clipboard.writeText(text);
-    alert("WhatsApp Lead Card Copied!");
+    alert("Copied for WhatsApp!");
 }
+
+loadData();
 </script>
 </body>
 </html>
