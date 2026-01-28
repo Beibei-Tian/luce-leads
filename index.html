@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Luce Sales Lead Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body class="bg-slate-50 font-sans">
+
+<div class="max-w-6xl mx-auto p-6">
+    <!-- Header -->
+    <div class="flex flex-col md:flex-row justify-between items-center mb-10 gap-4">
+        <div>
+            <h1 class="text-3xl font-black text-slate-900 tracking-tighter">LUCE <span class="text-blue-600">SALES</span></h1>
+            <p class="text-xs font-bold text-slate-400 uppercase tracking-widest">Babysitting Lead Management Portal</p>
+        </div>
+        <div class="flex gap-2">
+            <input type="text" id="postalSearch" placeholder="Filter by Postal..." class="p-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500">
+            <button onclick="loadData()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-bold shadow-lg transition flex items-center gap-2">
+                <i class="fas fa-sync-alt"></i> REFRESH
+            </button>
+        </div>
+    </div>
+
+    <!-- Stats Row (Lead Analysis) -->
+    <div id="statsRow" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8"></div>
+
+    <!-- Lead Grid -->
+    <div id="leadGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div class="col-span-full text-center py-20 text-slate-400">Click Refresh to load latest leads...</div>
+    </div>
+</div>
+
+<script>
+// 1. PLACE YOUR PUBLISHED CSV LINK HERE
+const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1v...YOUR_ID_HERE.../pub?output=csv";
+
+function loadData() {
+    Papa.parse(CSV_URL, {
+        download: true,
+        header: true,
+        complete: function(results) {
+            renderDashboard(results.data);
+        },
+        error: function(err) {
+            alert("Error: Make sure your Google Sheet is 'Published to Web' as CSV.");
+        }
+    });
+}
+
+function renderDashboard(data) {
+    const grid = document.getElementById('leadGrid');
+    const stats = document.getElementById('statsRow');
+    grid.innerHTML = '';
+    
+    // Reverse data to show newest first
+    const cleanData = data.filter(row => row['Timestamp']).reverse();
+
+    // Render Stats
+    stats.innerHTML = `
+        <div class="bg-white p-4 rounded-xl shadow-sm border-b-4 border-blue-500">
+            <p class="text-[10px] font-black text-slate-400 uppercase">Total Leads</p>
+            <p class="text-2xl font-black text-slate-800">${cleanData.length}</p>
+        </div>
+    `;
+
+    cleanData.forEach(lead => {
+        // Logic for 11:30 AM - 12:30 PM Rule (6-hour bookings)
+        const duration = parseInt(lead['Duration (Hours)'] || 0);
+        const startTime = (lead['Start Time'] || "").toLowerCase();
+        const isMiddayRisk = duration >= 6 && (startTime.includes("11:3") || startTime.includes("12:") || startTime.includes("12:3"));
+
+        const card = document.createElement('div');
+        card.className = `bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col justify-between transition hover:shadow-md ${isMiddayRisk ? 'ring-2 ring-red-500' : ''}`;
+        
+        card.innerHTML = `
+            <div>
+                <div class="flex justify-between items-start mb-4">
+                    <span class="text-[9px] font-black text-slate-400 uppercase">${lead['Timestamp']}</span>
+                    ${isMiddayRisk ? '<span class="bg-red-600 text-white text-[9px] font-black px-2 py-0.5 rounded animate-pulse">UTILIZATION RISK</span>' : ''}
+                </div>
+                
+                <h3 class="text-xl font-bold text-slate-800">${lead['Parent Name']}</h3>
+                <p class="text-blue-600 font-mono text-sm font-bold mb-4">${lead['Postal Code (6 digits)']} | ${lead['Number of Children']} Child(ren)</p>
+                
+                <div class="bg-slate-50 p-3 rounded-xl mb-4 grid grid-cols-2 gap-2">
+                    <div>
+                        <p class="text-[9px] font-black text-slate-400 uppercase">Schedule</p>
+                        <p class="text-xs font-bold">${lead['Date(s)']} @ ${lead['Start Time']}</p>
+                    </div>
+                    <div>
+                        <p class="text-[9px] font-black text-slate-400 uppercase">Duration</p>
+                        <p class="text-xs font-bold">${duration} Hours</p>
+                    </div>
+                </div>
+
+                <div class="space-y-3 mb-6">
+                    <div>
+                        <p class="text-[9px] font-black text-slate-400 uppercase mb-1">Must Haves</p>
+                        <div class="flex flex-wrap gap-1">
+                            ${(lead['What are the non-negotiable tasks?'] || "").split(',').map(t => `<span class="bg-slate-800 text-white text-[9px] px-2 py-0.5 rounded">${t.trim()}</span>`).join('')}
+                        </div>
+                    </div>
+                    <div>
+                        <p class="text-[9px] font-black text-slate-400 uppercase mb-1">Wishes</p>
+                        <div class="flex flex-wrap gap-1">
+                            ${(lead['What would you like but is not a dealbreaker?'] || "").split(',').map(t => `<span class="bg-blue-100 text-blue-600 text-[9px] px-2 py-0.5 rounded">${t.trim()}</span>`).join('')}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <button onclick="copyToWhatsApp('${lead['Parent Name']}', '${lead['Postal Code (6 digits)']}', '${lead['Start Time']}', '${duration}', '${lead['What are the non-negotiable tasks?']}')" 
+                    class="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 rounded-xl transition flex items-center justify-center gap-2 text-sm">
+                <i class="fab fa-whatsapp"></i> COPY LEAD CARD
+            </button>
+        `;
+        grid.appendChild(card);
+    });
+}
+
+function copyToWhatsApp(name, postal, time, dur, tasks) {
+    const text = `🚨 *NEW LEAD RECEIVED*\n👤 *Parent:* ${name}\n📍 *Postal:* ${postal}\n⏰ *Time:* ${time} (${dur} hrs)\n✅ *Must Do:* ${tasks}`;
+    navigator.clipboard.writeText(text);
+    alert("WhatsApp Lead Card Copied!");
+}
+</script>
+</body>
+</html>
