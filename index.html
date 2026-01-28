@@ -41,6 +41,7 @@ async function loadData() {
             header: false,
             skipEmptyLines: true,
             complete: function(results) {
+                // Pass the full data so we can access the header row (index 0)
                 renderDashboard(results.data);
             }
         });
@@ -53,6 +54,7 @@ function renderDashboard(rows) {
     const grid = document.getElementById('leadGrid');
     grid.innerHTML = '';
     
+    const headers = rows[0]; // The first row containing the activity names
     const dataRows = rows.slice(1).reverse();
 
     dataRows.forEach(row => {
@@ -68,21 +70,32 @@ function renderDashboard(rows) {
             others:    row[22]
         };
 
-        // --- GROUPING LOGIC ---
         let compulsory = [];
         let optional = [];
 
-        // Columns 9-14: Must-Haves (Compulsory)
-        for (let i = 9; i <= 14; i++) {
-            if (row[i] && row[i].trim() !== "") {
-                compulsory.push(row[i].replace(/Services Required \[|\]/g, ""));
-            }
-        }
+        // Loop through the service columns (9 to 21)
+        for (let i = 9; i <= 21; i++) {
+            let cellValue = (row[i] || "").trim();
+            let headerText = headers[i] || "";
 
-        // Columns 15-21: Wish-to-Haves (Optional)
-        for (let i = 15; i <= 21; i++) {
-            if (row[i] && row[i].trim() !== "") {
-                optional.push(row[i].replace(/Services Required \[|\]/g, ""));
+            if (cellValue !== "") {
+                // LOGIC: Extract the name from the header
+                // Example: "Services Required [Safe Supervision: Active play...]"
+                // We want "Safe Supervision"
+                let activityName = "";
+                let match = headerText.match(/\[(.*?)(?::|\])/);
+                if (match && match[1]) {
+                    activityName = match[1].trim();
+                } else {
+                    activityName = "Unknown Activity";
+                }
+
+                // Sort into groups based on cell content
+                if (cellValue.toLowerCase().includes("compulsory")) {
+                    compulsory.push(activityName);
+                } else if (cellValue.toLowerCase().includes("optional")) {
+                    optional.push(activityName);
+                }
             }
         }
 
@@ -119,7 +132,6 @@ function renderDashboard(rows) {
                     <p class="text-[10px] text-blue-500 font-bold uppercase">${lead.frequency}</p>
                 </div>
 
-                <!-- COMPULSORY SECTION -->
                 <div class="mb-4">
                     <p class="text-[9px] font-black text-slate-800 uppercase mb-2 flex items-center gap-1">
                         <i class="fas fa-star text-amber-500"></i> Compulsory Services
@@ -131,11 +143,8 @@ function renderDashboard(rows) {
                     </div>
                 </div>
 
-                <!-- OPTIONAL SECTION -->
                 <div class="mb-6">
-                    <p class="text-[9px] font-black text-slate-500 uppercase mb-2">
-                        Optional Services (Wishes)
-                    </p>
+                    <p class="text-[9px] font-black text-slate-500 uppercase mb-2">Optional Services</p>
                     <div class="flex flex-wrap gap-1">
                         ${optional.length > 0 
                             ? optional.map(s => `<span class="bg-blue-100 text-blue-700 text-[9px] px-2 py-0.5 rounded font-medium">${s}</span>`).join('') 
