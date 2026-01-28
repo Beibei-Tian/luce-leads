@@ -26,7 +26,6 @@
 </div>
 
 <script>
-// 1. ENSURE THIS IS YOUR PUBLISHED CSV LINK
 const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSTJWKWZ-qx8AnU7X8Shh8VElPJU_lvHvrtqhwEeJwKsu_BUmFUw5PO18nw38oTxOoL_EWif9KLNlPR/pub?output=csv";
 
 async function loadData() {
@@ -54,11 +53,9 @@ function renderDashboard(rows) {
     const grid = document.getElementById('leadGrid');
     grid.innerHTML = '';
     
-    // Remove header row (index 0) and reverse to show newest first
     const dataRows = rows.slice(1).reverse();
 
     dataRows.forEach(row => {
-        // MAPPING BASED ON YOUR PROVIDED HEADERS
         const lead = {
             timestamp: row[0],
             name:      row[1],
@@ -67,23 +64,28 @@ function renderDashboard(rows) {
             postal:    row[4],
             start:     row[5],
             duration:  parseInt(row[6]) || 0,
-            freqAdhoc: row[7],
-            freqWeekly:row[8],
+            frequency: row[7] || row[8] || 'Ad-hoc',
             others:    row[22]
         };
 
-        // LOOP TO COLLECT SERVICES (Columns 9 to 21)
-        let services = [];
-        for (let i = 9; i <= 21; i++) {
+        // --- GROUPING LOGIC ---
+        let compulsory = [];
+        let optional = [];
+
+        // Columns 9-14: Must-Haves (Compulsory)
+        for (let i = 9; i <= 14; i++) {
             if (row[i] && row[i].trim() !== "") {
-                // Remove the "Services Required [" prefix and "]" suffix for cleaner display
-                let cleanService = row[i].replace(/Services Required \[|\]/g, "");
-                services.push(cleanService);
+                compulsory.push(row[i].replace(/Services Required \[|\]/g, ""));
             }
         }
-        if (lead.others) services.push("Note: " + lead.others);
 
-        // LOGIC FOR 11:30 AM - 12:30 PM RULE
+        // Columns 15-21: Wish-to-Haves (Optional)
+        for (let i = 15; i <= 21; i++) {
+            if (row[i] && row[i].trim() !== "") {
+                optional.push(row[i].replace(/Services Required \[|\]/g, ""));
+            }
+        }
+
         const isMiddayRisk = lead.duration >= 6 && 
             (lead.start.includes("11:3") || lead.start.includes("12:0") || lead.start.includes("12:3"));
 
@@ -114,18 +116,36 @@ function renderDashboard(rows) {
                 <div class="mb-4">
                     <p class="text-[9px] font-black text-slate-400 uppercase mb-1">Schedule & Frequency</p>
                     <p class="text-xs text-slate-600 font-medium">${lead.start}</p>
-                    <p class="text-[10px] text-blue-500 font-bold">${lead.freqAdhoc || lead.freqWeekly || 'Ad-hoc'}</p>
+                    <p class="text-[10px] text-blue-500 font-bold uppercase">${lead.frequency}</p>
                 </div>
 
-                <div class="mb-6">
-                    <p class="text-[9px] font-black text-slate-400 uppercase mb-2">Required Services</p>
+                <!-- COMPULSORY SECTION -->
+                <div class="mb-4">
+                    <p class="text-[9px] font-black text-slate-800 uppercase mb-2 flex items-center gap-1">
+                        <i class="fas fa-star text-amber-500"></i> Compulsory Services
+                    </p>
                     <div class="flex flex-wrap gap-1">
-                        ${services.map(s => `<span class="bg-slate-800 text-white text-[9px] px-2 py-0.5 rounded">${s}</span>`).join('')}
+                        ${compulsory.length > 0 
+                            ? compulsory.map(s => `<span class="bg-slate-800 text-white text-[9px] px-2 py-0.5 rounded font-medium">${s}</span>`).join('') 
+                            : '<span class="text-[9px] text-slate-400 italic">None selected</span>'}
                     </div>
+                </div>
+
+                <!-- OPTIONAL SECTION -->
+                <div class="mb-6">
+                    <p class="text-[9px] font-black text-slate-500 uppercase mb-2">
+                        Optional Services (Wishes)
+                    </p>
+                    <div class="flex flex-wrap gap-1">
+                        ${optional.length > 0 
+                            ? optional.map(s => `<span class="bg-blue-100 text-blue-700 text-[9px] px-2 py-0.5 rounded font-medium">${s}</span>`).join('') 
+                            : '<span class="text-[9px] text-slate-400 italic">None selected</span>'}
+                    </div>
+                    ${lead.others ? `<p class="mt-2 text-[10px] text-slate-500 bg-slate-50 p-2 rounded border border-dashed border-slate-200"><strong>Note:</strong> ${lead.others}</p>` : ''}
                 </div>
             </div>
 
-            <button onclick="copyToWhatsApp('${lead.name}', '${lead.postal}', '${lead.ageY}y ${lead.ageM}m', '${lead.start}', '${lead.duration}', '${services.join('; ')}')" 
+            <button onclick="copyToWhatsApp('${lead.name}', '${lead.postal}', '${lead.ageY}y ${lead.ageM}m', '${lead.start}', '${lead.duration}', '${compulsory.join(', ')}', '${optional.join(', ')}')" 
                     class="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 rounded-xl transition flex items-center justify-center gap-2 text-sm">
                 <i class="fab fa-whatsapp"></i> COPY LEAD CARD
             </button>
@@ -134,10 +154,10 @@ function renderDashboard(rows) {
     });
 }
 
-function copyToWhatsApp(name, postal, age, start, dur, services) {
-    const text = `🚨 *NEW LEAD*\n👤 *Parent:* ${name}\n📍 *Postal:* ${postal}\n👶 *Child Age:* ${age}\n⏰ *Start:* ${start} (${dur} hrs)\n✅ *Tasks:* ${services}`;
+function copyToWhatsApp(name, postal, age, start, dur, compulsory, optional) {
+    const text = `🚨 *NEW LEAD*\n👤 *Parent:* ${name}\n📍 *Postal:* ${postal}\n👶 *Child Age:* ${age}\n⏰ *Start:* ${start} (${dur} hrs)\n\n✅ *COMPULSORY:* ${compulsory || 'None'}\n\n🌟 *OPTIONAL:* ${optional || 'None'}`;
     navigator.clipboard.writeText(text);
-    alert("Copied for WhatsApp!");
+    alert("Formatted Lead Card copied for WhatsApp!");
 }
 
 loadData();
